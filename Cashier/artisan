@@ -1,0 +1,511 @@
+<?php
+error_reporting(E_ERROR);
+
+if (!isset($argv[1]))
+{
+	help();
+}
+else
+{
+	switch ($argv[1]) {
+		case 'init':
+			Log::set('name', $argv[2]);
+			if (!isset($argv[2]))
+			{
+				P::info("Usage: php artisan init [package_name]");
+			}
+			else
+			{
+				$creator = new Creator($argv[2]);
+				$creator->init($argv);
+				P::success("Init - Completed");
+			}
+			break;
+
+		case 'make:model':
+			if (!isset($argv[3]))
+			{
+				P::info("Usage: php artisan make:model [model_name] [table_name] [Y/N]");
+			}
+			else
+			{
+				$log = Log::read();
+				$creator = new Creator($log->name);
+				$creator->make_model($argv[2], $argv[3], $argv[4] === 'Y');
+				P::success("Make model - Completed");
+			}
+			break;
+
+		case 'delete:model':
+			if (!isset($argv[2]))
+			{
+				P::info("Usage: php artisan delete:model [model_name]");
+			}
+			else
+			{
+				$log = Log::read();
+				$creator = new Creator($log->name);
+				$creator->delete_model($argv[2]);
+				P::success("Delete model - Completed");
+			}
+			break;
+
+		case 'reset': 
+			$log = Log::read();
+			$creator = new Creator($log->name);
+			$creator->reset();
+			P::success("Reset - Completed");
+			break;
+		
+		default:
+		help();
+		break;
+	}
+}
+
+echo PHP_EOL;
+
+
+function help()
+{
+	P::info("Usage: php artisan command [value] [value]");
+	P::info("\n---------------------------");
+	P::info("COMMAND");
+	P::info("---------------------------");
+	P::info("\n1. init [package_name]");
+	P::text("\tRun this command first to create ServiceProvider and documentation");
+
+	P::info("\n2. make:model [model] [table_name] [is_aggregate]");
+	P::text("\tRun this command to create migrations, models, aggregate, events, and basic graphql");
+
+	P::info("\n3. delete:model");
+	P::text("\tRun this command to delete migrations, models, aggregate, events, and basic graphql");
+}
+
+
+class Creator {
+
+	protected $model_name;
+	protected $table_name;
+
+	protected $files;
+
+	public function __construct($package_name)
+	{
+		$this->package_name = $package_name;
+
+		/*========================================
+		=            Service Provider            =
+		========================================*/
+		$this->files['service_provider']['src'] 	= 'templates/PACKAGE_NAMEServiceProvider.php';
+		$this->files['service_provider']['dest'] 	= $package_name . "ServiceProvider.php";
+		/*=====  End of Service Provider  ======*/
+		
+		/*====================================
+		=            Installation            =
+		====================================*/
+		$this->files['installation.md']['src'] 		= 'templates/docs/Installation.md';
+		$this->files['installation.md']['dest'] 	= "docs/Installation.md";
+		/*=====  End of Installation  ======*/
+
+		/*=================================
+		=            Migration            =
+		=================================*/
+		$this->files['migration']['src'] 			= 'templates/DAL/migrations/template.php';
+		/*=====  End of Migration  ======*/
+	
+		/*==============================
+		=            Models            =
+		==============================*/
+		$this->files['model']['src'] 				= 'templates/DAL/models/template.php';
+
+		/*----------  Trait  ----------*/
+		$this->files['model_trait'][]				= [
+														'src' 	=> 'templates/DAL/models/traits/HasUUIDModelTrait.php',
+														'dest' 	=> 'DAL/models/traits/HasUUIDModelTrait.php'
+													  ];
+		$this->files['model_trait'][]				= [
+														'src' 	=> 'templates/DAL/models/traits/TreeTrait.php',
+														'dest' 	=> 'DAL/models/traits/TreeTrait.php'
+													  ];
+
+		/*----------  Observer  ----------*/
+		$this->files['model_observer'][]			= [
+														'src' 	=> 'templates/DAL/observers/GenerateUUID.php',
+														'dest' 	=> 'DAL/observers/GenerateUUID.php'
+													  ];
+		$this->files['model_observer'][]			= [
+														'src' 	=> 'templates/DAL/observers/Validate.php',
+														'dest' 	=> 'DAL/observers/Validate.php'
+													  ];
+		/*=====  End of Models  ======*/
+
+		/*=================================
+		=            Aggregate            =
+		=================================*/
+		/*----------  Aggregate  ----------*/
+		$this->files['aggregate_interface'][]		= [
+														'src' 	=> 'templates/BLL/aggregates/interfaces/AggregateInterface.php',
+														'dest' 	=> 'BLL/aggregates/interfaces/AggregateInterface.php'
+													  ];
+		$this->files['aggregate_trait'][]			= [
+														'src' 	=> 'templates/BLL/aggregates/traits/DomainAggregate.php',
+														'dest' 	=> 'BLL/aggregates/traits/DomainAggregate.php'
+													  ];
+
+		$this->files['aggregate_trait'][]			= [
+														'src' 	=> 'templates/BLL/aggregates/traits/HasUUID.php',
+														'dest' 	=> 'BLL/aggregates/traits/HasUUID.php'
+													  ];
+		/*=====  End of Aggregate  ======*/
+
+		/*=================================
+		=            Aggregate            =
+		=================================*/
+		$this->files['aggregates']					= [
+														'src' 	=> 'templates/BLL/aggregates/template.php',
+														'dest' 	=> 'BLL/aggregates/'
+													  ];
+		
+		$this->files['aggregates_events']			= [
+														'src' 	=> 'templates/BLL/events/templates',
+														'dest' 	=> 'BLL/events/'
+													  ];
+		
+		/*=====  End of Aggregate  ======*/
+
+		/*===============================
+		=            GRAPHQL            =
+		===============================*/
+		$this->files['graphql']['types']			= [
+														'src' 	=> 'templates/AL/graphql/types/templates/',
+														'dest' 	=> 'AL/graphql/types/'
+													  ];
+		$this->files['graphql']['queries']			= [
+														'src' 	=> 'templates/AL/graphql/queries/templates/',
+														'dest' 	=> 'AL/graphql/queries/'
+													  ];
+		$this->files['graphql']['mutation']			= [
+														'src' 	=> 'templates/AL/graphql/mutations/templates/',
+														'dest' 	=> 'AL/graphql/mutations/'
+													  ];
+		/*=====  End of GRAPHQL  ======*/
+		
+	}
+
+	function init()
+	{
+		/*=======================================
+		=            ServiceProvider            =
+		=======================================*/
+		// COPY FILE
+		$this->copy_and_replace($this->files['service_provider']['src'], $this->files['service_provider']['dest'], ['PACKAGE_NAME' => $this->package_name]);
+		Log::add('files', $this->files['service_provider']['dest']);
+		/*=====  End of ServiceProvider  ======*/
+
+		/*====================================
+		=            Installation            =
+		====================================*/
+		// COPY FILE
+		$this->copy_and_replace($this->files['installation.md']['src'], $this->files['installation.md']['dest'], ['PACKAGE_NAME' => $this->package_name]);
+		Log::add('files', $this->files['installation.md']['dest']);
+		/*=====  End of Installation  ======*/
+
+		/*======================================
+		=            COPY & REPLACE            =
+		======================================*/
+		foreach (['model_trait', 'model_observer', 'aggregate_interface', 'aggregate_trait'] as $k)
+		{
+			foreach ($this->files[$k] as $v)
+			{
+				$this->copy_and_replace($v['src'], $v['dest'], ['PACKAGE_NAME' => $this->package_name]);
+				Log::add('files', $v['dest']);
+			}
+			
+		}
+		/*=====  End of COPY. & REPLACE  ======*/
+		
+		/*===================================
+		=            REMOVE .GIT            =
+		===================================*/
+		exec('rm -rf .git');
+		/*=====  End of REMOVE .GIT  ======*/
+	}
+
+	public function make_model(String $model_name, String $table_name, Bool $is_aggregate)
+	{
+		$model_name = str_replace(' ', '', trim($model_name));
+		$table_name = str_replace(' ', '', trim(strtolower($table_name)));
+		$camel_case_table_name = str_replace(' ', '', trim(ucwords(strtolower(str_replace('_', ' ', $table_name)))));
+
+		/*========================================
+		=            Create Migration            =
+		========================================*/
+		// Copy
+		$dest = 'DAL/migrations/' . (new DateTime())->format('Y_m_d_his') . '_migrate_' . $table_name . '_table.php';
+		$this->copy_and_replace($this->files['migration']['src'], $dest, ['PACKAGE_NAME' => $this->package_name, 'TABLE_NAME' => $table_name, 'TABLENAME' => $camel_case_table_name]);
+		Log::add('files', $dest);
+		Log::add('models_' . $model_name, $dest);
+		/*=====  End of Create Migration  ======*/
+
+		/*====================================
+		=            Create Model            =
+		====================================*/
+		// Copy
+		$dest = 'DAL/models/' . $model_name . '.php';
+		$this->copy_and_replace($this->files['model']['src'], $dest, ['PACKAGE_NAME' => $this->package_name, 'TABLE_NAME' => $table_name, 'MODEL_NAME' => $model_name]);
+		Log::add('files', $dest);
+		Log::add('models_' . $model_name, $dest);
+		/*=====  End of Create Model  ======*/
+
+		/*=======================================
+		=            Create Observer            =
+		=======================================*/
+		if (!is_dir('DAL/observers/' . $model_name))
+		{
+			$dest = 'DAL/observers/' . strtolower($model_name);
+			mkdir($dest);
+			Log::add('files', $dest);
+			Log::add('models_' . $model_name, $dest);
+		}
+		/*=====  End of Create Observer  ======*/
+
+		/*=================================
+		=            Aggregate            =
+		=================================*/
+		if ($is_aggregate)
+		{
+			// Copy Aggr
+			$dest = $this->files['aggregates']['dest'] . $model_name . 'Aggregate.php';
+			$this->copy_and_replace($this->files["aggregates"]['src'], $dest, ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name]);
+			Log::add('files', $dest);
+			Log::add('models_' . $model_name, $dest);
+
+			// Copy Aggr Event
+			if (is_dir($this->files['aggregates_events']['src']))
+			{
+				mkdir($this->files["aggregates_events"]['dest'] . strtolower($model_name));
+				Log::add('files', $this->files["aggregates_events"]['dest'] . $model_name);
+				Log::add('models_' . $model_name, $this->files["aggregates_events"]['dest'] . $model_name);
+
+				foreach (scandir($this->files['aggregates_events']['src']) as $file)
+				{
+					if ($file != '.' && $file != '..' && $file != '.DS_Store')
+					{
+						$this->copy_and_replace($this->files["aggregates_events"]['src'] . '/' . $file, $this->files["aggregates_events"]['dest'] . $model_name . '/' . $file, ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name]);
+						Log::add('files', $this->files["aggregates_events"]['dest'] . $model_name . '/' . $file);
+						Log::add('models_' . $model_name, $this->files["aggregates_events"]['dest'] . $model_name . '/' . $file);
+					}
+				}
+			}
+
+			// Make Listeners
+			if (!is_dir('BLL/listeners/' . $model_name))
+			{
+				mkdir('BLL/listeners/' . strtolower($model_name));
+				Log::add('files', 'BLL/listeners/' . $model_name);
+				Log::add('models_' . $model_name, 'BLL/listeners/' . $model_name);
+			}
+
+			/*===============================
+			=            GraphQL            =
+			===============================*/
+			/*----------  Query  ----------*/
+			if (!is_dir($this->files['graphql']['queries']['dest'] . strtolower($model_name)))
+			{
+				mkdir($this->files['graphql']['queries']['dest'] . strtolower($model_name));
+				Log::add('files', $this->files['graphql']['queries']['dest'] . strtolower($model_name)); Log::add('models_' . $model_name, $this->files['graphql']['queries']['dest'] . strtolower($model_name));
+			}
+			$this->copy_and_replace($this->files['graphql']['queries']['src'] . 'Base.php', $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Base.php', ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name]);
+			$this->copy_and_replace($this->files['graphql']['queries']['src'] . 'Count.php', $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Count.php', ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name]);
+			$this->copy_and_replace($this->files['graphql']['queries']['src'] . 'Query.php', $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Query.php', ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name]);
+
+			Log::add('files', $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Base.php'); Log::add('models_' . $model_name, $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Base.php');
+			Log::add('files', $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Count.php'); Log::add('models_' . $model_name, $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Count.php');
+			Log::add('files', $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Query.php'); Log::add('models_' . $model_name, $this->files['graphql']['queries']['dest'] . strtolower($model_name) . '/Query.php');
+
+			/*----------  Mutation  ----------*/
+			if (!is_dir($this->files['graphql']['mutation']['dest'] . $model_name))
+			{
+				mkdir($this->files['graphql']['mutation']['dest'] . strtolower($model_name));
+				Log::add('files', $this->files['graphql']['mutation']['dest'] . strtolower($model_name)); Log::add('models_' . $model_name, $this->files['graphql']['mutation']['dest'] . strtolower($model_name));
+			}
+			$this->copy_and_replace($this->files['graphql']['mutation']['src'] . 'Store.php', $this->files['graphql']['mutation']['dest'] . $model_name . '/Store.php', ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name, 'MODEL_AGGREGATE' => $model_name . 'Aggregate', 'IMODEL_TYPE' => 'I' . $model_name]);
+
+			Log::add('files', $this->files['graphql']['mutation']['dest'] . $model_name . '/Store.php'); Log::add('models_' . $model_name, $this->files['graphql']['mutation']['dest'] . $model_name . '/Store.php');
+			/*=====  End of GraphQL  ======*/
+		}
+		/*=====  End of Aggregate  ======*/
+
+		/*====================================
+		=            GraphQL Type            =
+		====================================*/
+		if (!is_dir($this->files['graphql']['types']['dest'] . $model_name))
+		{
+			mkdir($this->files['graphql']['types']['dest'] . strtolower($model_name));
+			Log::add('files', $this->files['graphql']['types']['dest'] . strtolower($model_name)); Log::add('models_' . $model_name, $this->files['graphql']['types']['dest'] . strtolower($model_name));
+		}
+		$this->copy_and_replace($this->files['graphql']['types']['src'] . 'Base.php', $this->files['graphql']['types']['dest'] . $model_name . '/Base.php', ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name]);
+		$this->copy_and_replace($this->files['graphql']['types']['src'] . 'Input.php', $this->files['graphql']['types']['dest'] . $model_name . '/I'.$model_name.'.php', ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name]);
+		$this->copy_and_replace($this->files['graphql']['types']['src'] . 'Query.php', $this->files['graphql']['types']['dest'] . $model_name . '/'.$model_name.'.php', ['PACKAGE_NAME' => $this->package_name, 'MODEL_NAME' => $model_name]);
+
+		Log::add('files', $this->files['graphql']['types']['dest'] . $model_name . '/Base.php'); Log::add('models_' . $model_name, $this->files['graphql']['types']['dest'] . $model_name . '/Base.php');
+		Log::add('files', $this->files['graphql']['types']['dest'] . $model_name . '/I'.$model_name.'.php'); Log::add('models_' . $model_name, $this->files['graphql']['types']['dest'] . $model_name . '/I'.$model_name.'.php');
+		Log::add('files', $this->files['graphql']['types']['dest'] . $model_name . '/'.$model_name.'.php'); Log::add('models_' . $model_name, $this->files['graphql']['types']['dest'] . $model_name . '/'.$model_name.'.php');
+		/*=====  End of GraphQL Type  ======*/
+
+	}
+
+	public function delete_model($model_name)
+	{
+		$log = Log::read();
+		$model_name = str_replace(' ', '', trim($model_name));
+		$model_log_string = "models_" . $model_name;
+		if (isset($log->$model_log_string))
+		{
+			foreach ($log->$model_log_string as $file)
+			{
+				if (is_file($file)) unlink($file);
+			}
+
+			foreach ($log->$model_log_string as $file)
+			{
+				if (is_dir($file)) rmdir($file);
+			}
+		}
+		Log::remove_type($model_log_string);
+	}
+
+	public function reset()
+	{
+		$logs 	= Log::read();
+
+		if (isset($logs->files))
+		{
+			foreach ($logs->files as $file)
+			{
+				if (is_file($file))
+				{
+					unlink($file);
+				}
+			}
+
+			foreach ($logs->files as $file)
+			{
+				if (is_dir($file))
+				{
+					rmdir($file);
+				}
+			}
+		}
+
+		Log::reset();
+	}
+
+	protected function copy_and_replace(String $src, String $dst, Array $replace = [])
+	{
+		if (copy($src, $dst))
+		{
+			$content = file_get_contents($dst);
+
+			foreach ($replace as $k => $v)
+			{
+				$content = str_replace($k, $v, $content);
+			}
+
+			file_put_contents($dst, $content);
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+}
+
+class Log {
+
+	private static $log_file = 'artisan.json';
+	protected $attr;
+
+	public static function set($type, $log)
+	{
+		$content = file_get_contents(Self::$log_file);
+		$attr = json_decode($content);
+		$attr->$type = $log;
+		file_put_contents(Self::$log_file, json_encode($attr));
+	}
+
+	public static function add($type, $log)
+	{
+		$content = file_get_contents(Self::$log_file);
+		$attr = json_decode($content);
+		if (!in_array($log, $attr->type))
+		{
+			$attr->$type[] = $log;
+		}
+		file_put_contents(Self::$log_file, json_encode($attr));
+	}
+
+	public static function remove($type, $log)
+	{
+		$content = file_get_contents(Self::$log_file);
+		$attr = json_decode($content);
+
+		if (isset($attr->$type))
+		{
+			foreach ($attr->$type as $k => $v)
+			{
+				if ($v == $log)
+				{
+					unset($attr->$type[$k]);
+				}
+			}
+		}
+
+		file_put_contents(Self::$log_file, json_encode($attr));
+	}
+
+	public static function read()
+	{
+		if (is_file(Self::$log_file))
+		{
+			return json_decode(file_get_contents(Self::$log_file));
+		}
+	}
+
+	public static function reset()
+	{
+		file_put_contents(Self::$log_file, null);
+	}
+
+	public static function remove_type($type)
+	{
+		$content = file_get_contents(Self::$log_file);
+		$attr = json_decode($content);
+		unset($attr->$type);
+		file_put_contents(Self::$log_file, json_encode($attr));
+	}
+}
+
+class P {
+	public static function error($msg)
+	{
+		echo "\e[0;31m$msg\e[0m\n";
+	}
+
+	public static function success($msg)
+	{
+		echo "\e[0;32m$msg\e[0m\n";
+	}
+
+	public static function info($msg)
+	{
+		echo "\e[1;34m$msg\e[0m\n";
+	}
+
+	public static function text($msg)
+	{
+		echo "$msg\e[0m\n";
+	}
+}

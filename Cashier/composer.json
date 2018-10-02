@@ -1,0 +1,10 @@
+{
+    "name": "erickmo/akira-customers",
+    "authors": [
+        {
+            "name": "Erick Mo",
+            "email": "erick.mo@vortege.com"
+        }
+    ],
+    "require": {}
+}
